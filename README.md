@@ -98,3 +98,43 @@ tradenexus-cli/
     ├── session.py           # Local JSON session persistence
     └── utils.py             # JSON extraction, grounding helpers
 ```
+
+## Intelligence layer (APIs)
+
+If we want to build a powerful Intelligence Layer using publicly available or free-tier APIs (avoiding expensive commercial licenses like ZoomInfo or Panjiva), there are several excellent open data sources we can leverage for the import/export sector.
+Here are the best publicly available APIs categorized by the intelligence they provide:
+
+### 1. Global Trade & Tariff Intelligence
+
+**UN Comtrade API**: The gold standard for global trade data. It offers a free public tier that allows you to query import and export volumes, trade values (in USD), and trade flows between specific countries using HS (Harmonized System) codes. This could automatically populate the "Trade Volume" or market demand charts in your app.
+
+**World Bank WITS (World Integrated Trade Solution) API**: Completely free and open. It provides detailed data on bilateral trade, tariff rates, and non-tariff measures.
+ITA (International Trade Administration) APIs: Provided by the US Government (free to use). They offer several useful endpoints for B2B exporters:
+Tariff Search: Look up tariffs for specific HS codes.
+
+**Consolidated Screening List (CSL)**: Crucial for compliance. You can use this to automatically screen generated leads to ensure they aren't on any international sanctions or embargo lists.
+
+### 2. Company Verification & Firmographics
+
+**OpenCorporates API**: The largest open database of companies in the world. They have a free/public-benefit tier that can be used to verify if a generated lead is a legally registered entity, retrieve their incorporation date, active status, and registered address.
+
+**UK Companies House API (and similar regional registries)**: 100% free and open REST API. If you search for leads in the UK, this API can pull their exact financial filings, officer names (for direct contacts), and incorporation status without paying a dime. Many EU countries and some US states have similar open registries.
+
+### 3. Financial Health & Scale
+
+**SEC EDGAR REST API**: Completely free. If the lead is a publicly traded company (or a subsidiary of one) in the US, you can programmatically pull their exact revenue, employee count, and risk factors from their most recent 10-K filings.
+
+**Yahoo Finance API (Community/Free Tiers)**: Useful for pulling market capitalization or recent financial news for larger corporate leads to gauge their buying power.
+
+### 4. Market Sentiment & Supply Chain Disruption
+
+**The GDELT Project**: A massive, free, open dataset that monitors global news, events, and sentiment in real-time. It can be queried to detect if there are supply chain disruptions, port strikes, or economic booms in the user's specific target region.
+
+**Google News RSS / Media RSS**: By programmatically parsing RSS feeds for the target product ("Lithium-ion batteries") in the target region, the intelligence layer can surface real-time market opportunities or competitor news right on the dashboard.
+
+### How we could implement this right now:
+Since we are already using Gemini as our primary reasoning engine, we can use the Function Calling (Tools) feature to give Gemini access to these public APIs.
+For example, we could build a tool that:
+Takes the HS Code for the user's product.
+Calls the UN Comtrade API to fetch exactly how many millions of dollars of that product are imported into their target region annually.
+Calls the ITA Screening API to automatically flag any lead that might be under trade sanctions.

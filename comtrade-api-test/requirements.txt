@@ -1,0 +1,5 @@
+comtradeapicall
+pandas
+urllib3
+requests
+streamlit>=1.28

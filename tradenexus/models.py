@@ -245,6 +245,15 @@ class Lead:
     sources: list[str] = field(default_factory=list)
     chat_history: list["ChatMessage"] = field(default_factory=list)
 
+    # Agent pipeline fields
+    evidence: list = field(default_factory=list)
+    social_discovery: list = field(default_factory=list)
+    verification: Optional[dict] = None
+    score_breakdown: Optional[dict] = None
+    recommendations: list = field(default_factory=list)
+    outreach_drafts: list = field(default_factory=list)
+    last_agent_action: Optional[str] = None
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,

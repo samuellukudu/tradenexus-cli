@@ -176,6 +176,23 @@ class RegionSuggestion:
 
 
 # ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SearchSession:
+    """Top-level container for a market search session."""
+    id: str
+    name: str = "Unnamed"
+    created_at: float = 0.0
+    product: Optional[ProductDetails] = None
+    strategic_context: Optional[StrategicContext] = None
+    suggestions: list[RegionSuggestion] = field(default_factory=list)
+    leads: list[Lead] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Leads
 # ---------------------------------------------------------------------------
 

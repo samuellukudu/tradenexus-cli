@@ -33,7 +33,10 @@ from rich.rule import Rule
 
 from tradenexus.config import DEFAULT_MODEL, GROUNDING_MODEL, THINKING_BUDGET
 from tradenexus.models import ChatMessage, ProductDetails, ProductAsset, StrategicContext
-from tradenexus import gemini_service as gs
+from tradenexus.core.context import extract_search_strategy_from_assets
+from tradenexus.core.markets import analyze_markets, generate_market_report
+from tradenexus.core.leads import search_for_leads, verify_lead
+from tradenexus.core.prospecting import generate_prospecting_message
 from tradenexus import session as sess
 from tradenexus import output as out
 
@@ -114,7 +117,7 @@ def cmd_analyze_markets(
 
     console.print(Rule("[cyan]Analyzing Markets[/]", style="cyan"))
     with _spin("AI is analyzing global trade data..."):
-        suggestions = gs.analyze_markets(
+        suggestions = analyze_markets(
             product_name=product.name,
             product_description=product.description or "",
             continent=continent,
@@ -150,7 +153,7 @@ def cmd_market_report(
     console.print(Rule(f"[cyan]Market Report — {region}[/]", style="cyan"))
     with _spin(f"AI is researching {region} with Google Search grounding..."):
         try:
-            report = gs.generate_market_report(product, region)
+            report = generate_market_report(product, region)
         except Exception as e:
             console.print(f"[red]Failed to generate report: {e}[/]")
             raise typer.Exit(1)
@@ -182,7 +185,7 @@ def cmd_search_leads(
 
     with _spin("AI agents are scouting territory squads in parallel..."):
         try:
-            leads = gs.search_for_leads(product)
+            leads = search_for_leads(product)
         except Exception as e:
             console.print(f"[red]Search failed: {e}[/]")
             raise typer.Exit(1)
@@ -243,7 +246,7 @@ def cmd_verify_lead(
 
     with _spin(f"Verifying {company_name} via Google Search..."):
         try:
-            result = gs.verify_lead(dummy_lead, product)
+            result = verify_lead(dummy_lead, product)
         except Exception as e:
             console.print(f"[red]Verification failed: {e}[/]")
             raise typer.Exit(1)
@@ -303,7 +306,7 @@ def cmd_prospect(
 
         with _spin("AI is crafting a response..."):
             try:
-                reply = gs.generate_prospecting_message(history, lead, product.strategic_context)
+                reply = generate_prospecting_message(history, lead, product.strategic_context)
             except Exception as e:
                 console.print(f"[red]Error: {e}[/]")
                 continue
@@ -344,7 +347,7 @@ def cmd_extract_context(
     console.print(Rule("[cyan]Extracting Strategic Context[/]", style="cyan"))
     with _spin("AI is analysing your product documents..."):
         try:
-            ctx = gs.extract_search_strategy_from_assets(product)
+            ctx = extract_search_strategy_from_assets(product)
         except Exception as e:
             console.print(f"[red]Extraction failed: {e}[/]")
             raise typer.Exit(1)

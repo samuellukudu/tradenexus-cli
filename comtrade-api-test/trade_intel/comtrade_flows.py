@@ -112,6 +112,70 @@ def top_export_destinations(
     return ranked, c
 
 
+def annual_export_destination_trends(
+    supplier: str | Country,
+    *,
+    years: list[str],
+    cmd_code: str = "TOTAL",
+    top_n: int = 8,
+    pool_n: int | None = None,
+    exclude_world: bool = True,
+) -> tuple[pd.DataFrame, Country]:
+    """
+    Annual destination history for the strongest partner markets across a window.
+
+    This fetches annual top-destination snapshots year by year, then keeps the
+    partners with the highest cumulative exports across the requested window.
+    """
+    c = supplier if isinstance(supplier, Country) else resolve_country(supplier)
+    if not years:
+        return pd.DataFrame(columns=["period", "partnerDesc", "partnerCode", "export_usd"]), c
+
+    candidate_count = max(top_n, pool_n or top_n * 3)
+    frames: list[pd.DataFrame] = []
+    for year in sorted({str(year) for year in years}):
+        yearly, _ = top_export_destinations(
+            c,
+            period=year,
+            freq_code="A",
+            cmd_code=cmd_code,
+            top_n=candidate_count,
+            exclude_world=exclude_world,
+        )
+        if yearly.empty:
+            continue
+        frame = yearly.copy()
+        frame["period"] = frame["period"].astype(str) if "period" in frame.columns else year
+        frame["primaryValue"] = pd.to_numeric(frame["primaryValue"], errors="coerce")
+        frame = frame.dropna(subset=["primaryValue"])
+        if frame.empty:
+            continue
+        frames.append(frame[["period", "partnerDesc", "partnerCode", "primaryValue"]])
+
+    if not frames:
+        return pd.DataFrame(columns=["period", "partnerDesc", "partnerCode", "export_usd"]), c
+
+    out = pd.concat(frames, ignore_index=True)
+    out = (
+        out.groupby(["period", "partnerDesc", "partnerCode"], as_index=False)["primaryValue"]
+        .sum()
+        .sort_values(["period", "primaryValue"], ascending=[True, False])
+    )
+    totals = (
+        out.groupby(["partnerDesc", "partnerCode"], as_index=False)["primaryValue"]
+        .sum()
+        .sort_values("primaryValue", ascending=False)
+        .head(top_n)
+    )
+    out = out.merge(
+        totals[["partnerDesc", "partnerCode"]],
+        on=["partnerDesc", "partnerCode"],
+        how="inner",
+    )
+    out = out.rename(columns={"primaryValue": "export_usd"}).reset_index(drop=True)
+    return out, c
+
+
 def top_import_sources(
     buyer: str | Country,
     *,

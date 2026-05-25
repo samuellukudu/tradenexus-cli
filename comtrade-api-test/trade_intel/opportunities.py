@@ -85,13 +85,29 @@ def rank_exporter_opportunities(
                 }
             )
             continue
-        series = fetch_bilateral_export_series(
-            c.iso3,
-            iso3,
-            wits_year_from,
-            wits_year_to,
-            product=product.lower(),
-        )
+        try:
+            series = fetch_bilateral_export_series(
+                c.iso3,
+                iso3,
+                wits_year_from,
+                wits_year_to,
+                product=product.lower(),
+            )
+        except RuntimeError as exc:
+            rows.append(
+                {
+                    "partner": pname or partner_code_to_name(pcode) or iso3,
+                    "partner_iso3": iso3,
+                    "partner_code": pcode,
+                    "comtrade_export_usd": comtrade_usd,
+                    "wits_latest_year": None,
+                    "wits_latest_kusd": None,
+                    "cagr": None,
+                    "opportunity": None,
+                    "note": f"WITS lookup failed: {exc}",
+                }
+            )
+            continue
         if len(series) < 2:
             rows.append(
                 {

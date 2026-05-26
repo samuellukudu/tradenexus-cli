@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import comtradeapicall
 import pandas as pd
@@ -25,6 +26,29 @@ _WORLD_LABELS = frozenset(
         "unspecified",
     }
 )
+
+
+def _candidate_periods(freq_code: str, *, annual_years_back: int = 8, monthly_count: int = 18) -> list[str]:
+    """Return recent periods to probe when resolving the latest period with data."""
+    freq = (freq_code or "A").upper()
+    today = date.today()
+    if freq == "M":
+        year = today.year
+        month = today.month - 1
+        if month == 0:
+            year -= 1
+            month = 12
+        periods: list[str] = []
+        for _ in range(monthly_count):
+            periods.append(f"{year}{month:02d}")
+            month -= 1
+            if month == 0:
+                year -= 1
+                month = 12
+        return periods
+
+    latest_year = today.year - 1
+    return [str(year) for year in range(latest_year, latest_year - annual_years_back, -1)]
 
 
 def _preview_by_flow(
@@ -90,6 +114,25 @@ def _rank_partners(df: pd.DataFrame | None, *, top_n: int, exclude_world: bool) 
     out = out.sort_values("primaryValue", ascending=False)
     cols = [c for c in ("partnerDesc", "partnerCode", "primaryValue", "period", "cmdDesc") if c in out.columns]
     return out[cols].head(top_n).reset_index(drop=True)
+
+
+def latest_available_period(
+    reporter: str | Country,
+    *,
+    freq_code: str = "A",
+    cmd_code: str = "TOTAL",
+    flow_code: str = "X",
+) -> tuple[str | None, Country]:
+    """Resolve the newest recent Comtrade period that returns partner rows."""
+    c = reporter if isinstance(reporter, Country) else resolve_country(reporter)
+    for period in _candidate_periods(freq_code):
+        df = _preview_by_flow(c, flow_code=flow_code, period=period, freq_code=freq_code, cmd_code=cmd_code)
+        ranked = _rank_partners(df, top_n=1, exclude_world=True)
+        if not ranked.empty:
+            if "period" in ranked.columns and not ranked["period"].empty:
+                return str(ranked["period"].iloc[0]), c
+            return period, c
+    return None, c
 
 
 def top_export_destinations(

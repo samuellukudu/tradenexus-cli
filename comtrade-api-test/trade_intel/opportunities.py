@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 
 import pandas as pd
 
 from trade_intel.analytics import cagr
-from trade_intel.comtrade_flows import top_export_destinations
+from trade_intel.comtrade_flows import latest_available_period, top_export_destinations
 from trade_intel.partner_codes import partner_code_to_iso3, partner_code_to_name
 from trade_intel.wits_timeseries import fetch_bilateral_export_series
 
 from comtrade_countries import Country, resolve_country
+
+WITS_FULL_HISTORY_START_YEAR = 1988
 
 
 def _growth_component(cagr_value: float | None) -> float:
@@ -26,16 +29,38 @@ def _size_component(value: float, vmax: float) -> float:
     return max(0.0, min(1.0, math.log1p(value) / math.log1p(vmax)))
 
 
+def _normalize_wits_window(year_from: int | None, year_to: int | None) -> tuple[int, int]:
+    start_year = int(year_from) if year_from is not None else WITS_FULL_HISTORY_START_YEAR
+    end_year = int(year_to) if year_to is not None else date.today().year
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+    return start_year, end_year
+
+
+def _clean_series(series: list[tuple[str, float]]) -> list[tuple[int, float]]:
+    cleaned: list[tuple[int, float]] = []
+    for year, value in series:
+        try:
+            y = int(year)
+            v = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(v):
+            continue
+        cleaned.append((y, v))
+    return sorted(cleaned, key=lambda item: item[0])
+
+
 def rank_exporter_opportunities(
     supplier: str | Country,
     *,
-    comtrade_period: str,
+    comtrade_period: str | None = None,
     comtrade_freq: str = "A",
     cmd_code: str = "TOTAL",
     pool_size: int = 25,
     score_count: int = 15,
-    wits_year_from: int = 2018,
-    wits_year_to: int = 2022,
+    wits_year_from: int | None = None,
+    wits_year_to: int | None = None,
     product: str = "total",
 ) -> tuple[pd.DataFrame, Country]:
     """
@@ -45,14 +70,41 @@ def rank_exporter_opportunities(
     Pairs without WITS data are dropped from the scored table but are rare for major partners.
     """
     c = supplier if isinstance(supplier, Country) else resolve_country(supplier)
+    resolved_period = comtrade_period
+    if not resolved_period:
+        resolved_period, _ = latest_available_period(c, freq_code=comtrade_freq, cmd_code=cmd_code, flow_code="X")
+        if not resolved_period:
+            empty = pd.DataFrame()
+            empty.attrs.update(
+                {
+                    "comtrade_period": None,
+                    "comtrade_freq": comtrade_freq,
+                    "wits_year_from": None,
+                    "wits_year_to": None,
+                    "wits_window_mode": "full_available_history" if wits_year_from is None and wits_year_to is None else "custom_window",
+                }
+            )
+            return empty, c
+
+    requested_wits_year_from, requested_wits_year_to = _normalize_wits_window(wits_year_from, wits_year_to)
+    window_mode = "full_available_history" if wits_year_from is None and wits_year_to is None else "custom_window"
+    metadata = {
+        "comtrade_period": resolved_period,
+        "comtrade_freq": comtrade_freq,
+        "wits_year_from": requested_wits_year_from,
+        "wits_year_to": requested_wits_year_to,
+        "wits_window_mode": window_mode,
+    }
+
     ranked, _ = top_export_destinations(
         c,
-        period=comtrade_period,
+        period=resolved_period,
         freq_code=comtrade_freq,
         cmd_code=cmd_code,
         top_n=pool_size,
     )
     if ranked.empty:
+        ranked.attrs.update(metadata)
         return ranked, c
 
     rows: list[dict[str, object]] = []
@@ -86,11 +138,11 @@ def rank_exporter_opportunities(
             )
             continue
         try:
-            series = fetch_bilateral_export_series(
+            raw_series = fetch_bilateral_export_series(
                 c.iso3,
                 iso3,
-                wits_year_from,
-                wits_year_to,
+                requested_wits_year_from,
+                requested_wits_year_to,
                 product=product.lower(),
             )
         except RuntimeError as exc:
@@ -108,7 +160,8 @@ def rank_exporter_opportunities(
                 }
             )
             continue
-        if len(series) < 2:
+        series = _clean_series(raw_series)
+        if not series:
             rows.append(
                 {
                     "partner": pname or partner_code_to_name(pcode) or iso3,
@@ -133,8 +186,10 @@ def rank_exporter_opportunities(
                 "partner_iso3": iso3,
                 "partner_code": pcode,
                 "comtrade_export_usd": comtrade_usd,
+                "wits_start_year": y0,
                 "wits_latest_year": y1,
                 "wits_latest_kusd": v1,
+                "wits_history_points": len(series),
                 "cagr": cg,
                 "opportunity": 0.0,
                 "note": "",
@@ -144,7 +199,9 @@ def rank_exporter_opportunities(
     df = pd.DataFrame(rows)
     scored = df[df["wits_latest_kusd"].notna()].copy()
     if scored.empty:
-        return df.sort_values("comtrade_export_usd", ascending=False).head(score_count), c
+        result = df.sort_values("comtrade_export_usd", ascending=False).head(score_count).reset_index(drop=True)
+        result.attrs.update(metadata)
+        return result, c
 
     vmax = float(scored["wits_latest_kusd"].max())
     scored["opportunity"] = [
@@ -152,5 +209,6 @@ def rank_exporter_opportunities(
         + 0.38 * _growth_component(row["cagr"] if row["cagr"] is not None else None)
         for _, row in scored.iterrows()
     ]
-    scored = scored.sort_values("opportunity", ascending=False).head(score_count)
-    return scored.reset_index(drop=True), c
+    result = scored.sort_values("opportunity", ascending=False).head(score_count).reset_index(drop=True)
+    result.attrs.update(metadata)
+    return result, c

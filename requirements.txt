@@ -1,0 +1,6 @@
+google-genai
+typer
+rich
+python-dotenv
+fastapi
+uvicorn[standard]
